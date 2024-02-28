@@ -41,13 +41,13 @@ class Defaults:
         # energy level separation within the dot (meV)
         self.dot_split = 1./au.Eh
         # hopping amplitude (meV)
-        self.t_default = .1/au.Eh
+        self.t_default = .2/au.Eh
         self.t_range = [0., t_max/au.Eh]
         # local Zeeman field (meV)
         self.b_default = .5/au.Eh
         self.b_range = [-b_max/au.Eh, b_max/au.Eh]
         # superconducting gap (meV)
-        self.d_default = .25/au.Eh
+        self.d_default = .5/au.Eh
         self.d_range = [0., d_max/au.Eh]
         # superconducting phase step
         self.ph_d_default = 0.
@@ -126,7 +126,11 @@ class System:
         if par.no_levels > 1:
             onsite = np.kron(np.eye(par.no_levels), onsite)
             for l in range(par.no_levels):
-                onsite[l*self.dimB:(l+1)*self.dimB, l*self.dimB:(l+1)*self.dimB] += par.def_par.dot_split*l
+                for ld in range(self.dimB):
+                    if ld < self.dimB/2:  # particle
+                        onsite[l*self.dimB+ld, l*self.dimB+ld] -= par.def_par.dot_split*l
+                    else:  # hole
+                        onsite[l*self.dimB+ld, l*self.dimB+ld] += par.def_par.dot_split*l
         return onsite
         
     def hopping_matrix(self, i):
@@ -154,7 +158,7 @@ class System:
             hamiltonian[i*self.dim0:(i+1)*self.dim0, (i+1)*self.dim0:(i+2)*self.dim0] += self.hopping_matrix(i)
         for i in range(self.parameters.no_dots):
             hamiltonian[i*self.dim0:(i+1)*self.dim0, i*self.dim0:(i+1)*self.dim0] += self.onsite_matrix(i) 
-        hamiltonian += np.conjugate(np.triu(hamiltonian, k=1)).T
+        hamiltonian += np.conjugate(np.triu(hamiltonian, k=self.dimB)).T
         return hamiltonian
     
     def parameter_sweeping(self, parameter_name, start, stop, num=101):

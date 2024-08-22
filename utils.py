@@ -47,7 +47,7 @@ class Defaults:
         self.b_default = .5/au.Eh
         self.b_range = [-b_max/au.Eh, b_max/au.Eh]
         # superconducting gap (meV)
-        self.d_default = .5/au.Eh
+        self.d_default = 0.25/au.Eh
         self.d_range = [0., d_max/au.Eh]
         # superconducting phase step
         self.ph_d_default = 0.
@@ -113,16 +113,15 @@ class System:
 
     def onsite_matrix(self, i):
         par = self.parameters
-        # Nambu spinor = [\Psi^dag_up, \Psi^dag_down, \Psi_up, \Psi_down]
         onsite = np.zeros((self.dimB,self.dimB), dtype=np.complex128)
         onsite[0,0] = -par.mu[i]+par.b[i]
         onsite[1,1] = -par.mu[i]-par.b[i]
         onsite[2,2] =  par.mu[i]-par.b[i]
         onsite[3,3] =  par.mu[i]+par.b[i]
-        onsite[0,3] =  par.d[i]*np.exp( 1.j*par.ph_d*i)/2.
-        onsite[1,2] = -par.d[i]*np.exp( 1.j*par.ph_d*i)/2.
-        onsite[2,1] = -par.d[i]*np.exp(-1.j*par.ph_d*i)/2.
-        onsite[3,0] =  par.d[i]*np.exp(-1.j*par.ph_d*i)/2.
+        onsite[0,3] =  par.d[i]*np.exp( 1.j*par.ph_d*i)
+        onsite[1,2] = -par.d[i]*np.exp( 1.j*par.ph_d*i)
+        onsite[2,1] = -par.d[i]*np.exp(-1.j*par.ph_d*i)
+        onsite[3,0] =  par.d[i]*np.exp(-1.j*par.ph_d*i)
         if par.no_levels > 1:
             onsite = np.kron(np.eye(par.no_levels), onsite)
             for l in range(par.no_levels):
@@ -141,24 +140,26 @@ class System:
         hopping[0,1] = -par.t[i]*(1.j*np.sin(par.l_rho[i])*np.cos(par.l_ksi[i])*np.sin(par.l[i]) + np.sin(par.l_rho[i])*np.sin(par.l_ksi[i])*np.sin(par.l[i]))
         hopping[1,0] = -par.t[i]*(1.j*np.sin(par.l_rho[i])*np.cos(par.l_ksi[i])*np.sin(par.l[i]) - np.sin(par.l_rho[i])*np.sin(par.l_ksi[i])*np.sin(par.l[i]))
         hopping[1,1] = -par.t[i]*(np.cos(par.l[i]) - 1.j*np.cos(par.l_rho[i])*np.sin(par.l[i]))
+        # -transpose block & exp[i lambda.sigma] -> exp[-i lambda.sigma] (due to H.c.)
         hopping[2,2] =  par.t[i]*(np.cos(par.l[i]) - 1.j*np.cos(par.l_rho[i])*np.sin(par.l[i]))
         hopping[2,3] =  par.t[i]*(-1.j*np.sin(par.l_rho[i])*np.cos(par.l_ksi[i])*np.sin(par.l[i]) - np.sin(par.l_rho[i])*np.sin(par.l_ksi[i])*np.sin(par.l[i]))
         hopping[3,2] =  par.t[i]*(-1.j*np.sin(par.l_rho[i])*np.cos(par.l_ksi[i])*np.sin(par.l[i]) + np.sin(par.l_rho[i])*np.sin(par.l_ksi[i])*np.sin(par.l[i]))
         hopping[3,3] =  par.t[i]*(np.cos(par.l[i]) + 1.j*np.cos(par.l_rho[i])*np.sin(par.l[i]))
         if par.no_levels > 1:
             hopping = np.kron(np.eye(par.no_levels), hopping)
-        return hopping #+ np.conjugate(hopping.T)
+        return hopping
 
     def full_hamiltonian(self):
         """
         create Hamiltonian for the whole array
+        # Nambu spinor representation: Psi = [\psi_up, \psi_down, \psi^dag_up, \psi^dag_down]^T
         """
         hamiltonian = np.zeros((self.dim,self.dim), dtype=np.complex128)
         for i in range(self.parameters.no_dots-1):
             hamiltonian[i*self.dim0:(i+1)*self.dim0, (i+1)*self.dim0:(i+2)*self.dim0] += self.hopping_matrix(i)
         for i in range(self.parameters.no_dots):
             hamiltonian[i*self.dim0:(i+1)*self.dim0, i*self.dim0:(i+1)*self.dim0] += self.onsite_matrix(i) 
-        hamiltonian += np.conjugate(np.triu(hamiltonian, k=self.dimB)).T
+        hamiltonian = np.triu(hamiltonian) + np.conjugate(np.triu(hamiltonian, 1)).T
         return hamiltonian
     
     def parameter_sweeping(self, parameter_name, start, stop, num=101):

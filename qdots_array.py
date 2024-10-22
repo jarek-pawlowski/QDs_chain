@@ -1,7 +1,12 @@
 import utils
 
 defaults = utils.Defaults()
-parameters = utils.Parameters(no_dots=7, no_levels=2, default_parameters=defaults)
+
+# defaults.l_ksi_default = 2.3
+# defaults.l_rho_default = 1.6
+# defaults.l_default = 1.9
+
+parameters = utils.Parameters(no_dots=5, no_levels=1, default_parameters=defaults)
 system = utils.System(parameters)
 plot = utils.Plotting()
 
@@ -10,7 +15,8 @@ plot.plot_hamiltonian(hamiltonian)
 
 # eigs = eigh(hamiltonian, eigvals_only=True)
 
-paramsweep, eigenvalues, occupations = system.parameter_sweeping(parameter_name='mu', start=-1.5, stop=.5, num=101)
-plot.plot_eigenvalues(paramsweep, eigenvalues, occupations, range=[-1.,1.])
+paramsweep, eigenvalues, occupations, polarizations = system.parameter_sweeping(parameter_name='mu', start=-1.5, stop=.5, num=101, majorana_repr=True)
+#paramsweep, eigenvalues, occupations, polarizations = system.parameter_sweeping(parameter_name='t', start=.1, stop=.5, num=101, majorana_repr=True)
+plot.plot_eigenvalues(paramsweep, eigenvalues, polarizations, range=[-1.,1.])
 
-
+#majorana = system.majorana_representation(hamiltonian)

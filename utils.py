@@ -110,6 +110,14 @@ class System:
         self.dimB = 4  # Bogoliubov block
         self.dim0 =  self.parameters.no_levels*self.dimB  # single dot block
         self.dim = self.dim0*self.parameters.no_dots
+        # auxiliary matrices
+        U = np.array([[1,-1j],[1,1j]]/np.sqrt(2.))
+        U1 = np.linalg.inv(U)
+        self.U = np.kron(U, np.eye(2))
+        self.U1 = np.kron(U1, np.eye(2))
+        self.sx = np.array([[0,1],[1,0]])
+        self.sy = np.array([[0,-1j],[1j,0]])
+        self.sz = np.array([[1,0],[0,-1]])
 
     def onsite_matrix(self, i):
         par = self.parameters
@@ -134,17 +142,12 @@ class System:
         
     def hopping_matrix(self, i):
         par = self.parameters
-        # lambda_versor = [np.sin(par.l_rho[i])*np.cos(par.l_ksi[i]), np.sin(par.l_rho[i])*np.sin(par.l_ksi[i]), np.cos(par.l_rho[i])]
         hopping = np.zeros((self.dimB,self.dimB), dtype=np.complex128)
-        hopping[0,0] = -par.t[i]*(np.cos(par.l[i]) + 1.j*np.cos(par.l_rho[i])*np.sin(par.l[i]))
-        hopping[0,1] = -par.t[i]*(1.j*np.sin(par.l_rho[i])*np.cos(par.l_ksi[i])*np.sin(par.l[i]) + np.sin(par.l_rho[i])*np.sin(par.l_ksi[i])*np.sin(par.l[i]))
-        hopping[1,0] = -par.t[i]*(1.j*np.sin(par.l_rho[i])*np.cos(par.l_ksi[i])*np.sin(par.l[i]) - np.sin(par.l_rho[i])*np.sin(par.l_ksi[i])*np.sin(par.l[i]))
-        hopping[1,1] = -par.t[i]*(np.cos(par.l[i]) - 1.j*np.cos(par.l_rho[i])*np.sin(par.l[i]))
-        # -transpose block & exp[i lambda.sigma] -> exp[-i lambda.sigma] (due to H.c.)
-        hopping[2,2] =  par.t[i]*(np.cos(par.l[i]) - 1.j*np.cos(par.l_rho[i])*np.sin(par.l[i]))
-        hopping[2,3] =  par.t[i]*(-1.j*np.sin(par.l_rho[i])*np.cos(par.l_ksi[i])*np.sin(par.l[i]) - np.sin(par.l_rho[i])*np.sin(par.l_ksi[i])*np.sin(par.l[i]))
-        hopping[3,2] =  par.t[i]*(-1.j*np.sin(par.l_rho[i])*np.cos(par.l_ksi[i])*np.sin(par.l[i]) + np.sin(par.l_rho[i])*np.sin(par.l_ksi[i])*np.sin(par.l[i]))
-        hopping[3,3] =  par.t[i]*(np.cos(par.l[i]) + 1.j*np.cos(par.l_rho[i])*np.sin(par.l[i]))
+        lambda_versor = [np.sin(par.l_rho[i])*np.cos(par.l_ksi[i]), np.sin(par.l_rho[i])*np.sin(par.l_ksi[i]), np.cos(par.l_rho[i])]
+        ph = np.cos(par.l[i])*np.eye(2)+1j*np.sin(par.l[i])*(self.sx*lambda_versor[0]+self.sy*lambda_versor[1]+self.sz*lambda_versor[2])
+        hopping[:2,:2] = par.t[i]*ph
+        ph = np.cos(par.l[i])*np.eye(2)-1j*np.sin(par.l[i])*(self.sx*lambda_versor[0]+self.sy.T*lambda_versor[1]+self.sz*lambda_versor[2])
+        hopping[2:4,2:4] = -par.t[i]*ph
         if par.no_levels > 1:
             hopping = np.kron(np.eye(par.no_levels), hopping)
         return hopping
@@ -162,21 +165,53 @@ class System:
         hamiltonian = np.triu(hamiltonian) + np.conjugate(np.triu(hamiltonian, 1)).T
         return hamiltonian
     
-    def parameter_sweeping(self, parameter_name, start, stop, num=101):
+    def majorana_representation(self, hamiltonian):
+        """
+        Representation discussed in:
+        https://arxiv.org/pdf/2006.10153
+        """
+        d = int(self.dim/self.dimB)
+        H = hamiltonian.reshape(d, self.dimB, d, self.dimB)
+        M = np.zeros_like(H)
+        for i in range(d):
+            for j in range(d):
+                M[i,:,j,:] = (self.U1 @ H[i,:,j,:] @ self.U)*-1j  # (M-M^T)_ij, Eq. (14)
+
+        print(np.abs(M.imag).sum())        
+        return M.reshape(self.dim, self.dim)
+    
+    def parameter_sweeping(self, parameter_name, start, stop, num=101, majorana_repr=False):
         values = np.linspace(start/au.Eh, stop/au.Eh, num=num)
         eigenvalues = []
         occupations = []
+        polarizations = []
         for mu in values:
             setattr(self.parameters, parameter_name, np.ones(self.parameters.no_dots)*mu)
             hamiltonian = self.full_hamiltonian()
+            #
+            if majorana_repr:
+                majorana = self.majorana_representation(hamiltonian)
+                hamiltonian = -majorana @ majorana
+            #
             eigs, eigv = eigh(hamiltonian, eigvals_only=False)
+            if majorana_repr: eigs = np.sqrt(eigs)
             eigenvalues.append(eigs)
             edge_occ = np.zeros(len(eigs))
+            polars = np.zeros(len(eigs))
             for i in range(len(eigs)):
                 dots_occ = np.sum(abs2(eigv[:,i]).reshape(-1, self.dim0), axis=1)
                 edge_occ[i] = dots_occ[0]+dots_occ[-1]  # edge states
+                # polarization
+                V = eigv[:,i].reshape(-1, self.parameters.no_levels, self.dimB)
+                ai = V[:,:,0]
+                bi = V[:,:,1]
+                ci = V[:,:,2]
+                di = V[:,:,3]
+                Pi = np.sum(bi*np.conjugate(di)-ai*np.conjugate(ci), axis=1).real*2. 
+                polars[i] = np.abs(Pi[0]-Pi[-1])     
             occupations.append(edge_occ)
-        return values, eigenvalues, occupations
+            polarizations.append(polars)
+        return values, eigenvalues, occupations, polarizations
 
 
 class Plotting:

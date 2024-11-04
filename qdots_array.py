@@ -6,7 +6,7 @@ defaults = utils.Defaults()
 # defaults.l_rho_default = 1.6
 # defaults.l_default = 1.9
 
-parameters = utils.Parameters(no_dots=5, no_levels=1, default_parameters=defaults)
+parameters = utils.Parameters(no_dots=3, no_levels=1, default_parameters=defaults)
 system = utils.System(parameters)
 plot = utils.Plotting()
 

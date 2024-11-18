@@ -1,6 +1,6 @@
 import os
 import numpy as np
-from scipy.linalg import eigh
+from scipy.linalg import eigh, inv
 import matplotlib.pyplot as plt
 from matplotlib import colors
 
@@ -212,6 +212,78 @@ class System:
             occupations.append(edge_occ)
             polarizations.append(polars)
         return values, eigenvalues, occupations, polarizations
+    
+    def update_mu(self, new_mu):
+        self.parameters.mu = new_mu
+
+
+class Transport:
+    def __init__(self, system, gamma=1.):
+        self.s = system
+        # build W matrix
+        self.W = np.zeros((self.s.dim,self.s.dim))
+        sg = np.sqrt(gamma/au.Eh)
+        site = np.diag([sg,sg,-sg,-sg])
+        if self.s.parameters.no_levels > 1:
+            site = np.kron(np.eye(self.s.parameters.no_levels), site)
+        i = 0  # left lead:
+        self.W[i*self.s.dim0:(i+1)*self.s.dim0, i*self.s.dim0:(i+1)*self.s.dim0] += site 
+        i = self.s.parameters.no_dots-1  # right lead
+        self.W[i*self.s.dim0:(i+1)*self.s.dim0, i*self.s.dim0:(i+1)*self.s.dim0] += site 
+    def S_matrix(self, ef, hamiltonian):
+        Smat = inv(np.eye(self.s.dim)*ef - hamiltonian + self.W @ np.conjugate(self.W.T)*0.5j)
+        Smat = np.conjugate(self.W.T) @ Smat @ self.W
+        Smat = np.eye(self.s.dim) - Smat*1.j
+        return Smat
+    def C_ij_(self, i, j, S):
+        """
+        C = dI_i/dV_j 
+        i = {0,1} = {L,R} <- current via L/R lead
+        j = {0,1} = {L,R} <- L/R lead (electrode) voltage
+        """
+        dij = np.eye(2)[i,j]
+        i *= self.s.parameters.no_dots-1
+        j *= self.s.parameters.no_dots-1
+        #
+        Sij = S.reshape(np.rint(self.s.dim/4).astype(int),2,2,np.rint(self.s.dim/4).astype(int),2,2)
+        r_ee = Sij[i,0,:,j,0,:]
+        r_he = Sij[i,1,:,j,0,:]
+        return (2.*dij*self.s.parameters.no_levels - np.trace(r_ee @ np.conjugate(r_ee.T)) + np.trace(r_he @ np.conjugate(r_he.T))).real
+    def C_ij(self, i, j, ef):
+        """
+        ef = Fermi energy
+        """
+        return self.C_ij_(i, j, self.S_matrix(ef, self.s.full_hamiltonian()))
+    def kitaevH(self, m):
+        H = [[m/2, 0.5, 0, 0, -0.5, 0], 
+             [0.5, m/2, 0.5, 0.5, 0, -0.5], 
+             [0, 0.5, m/2, 0, 0.5, 0], 
+             [0, 0.5, 0, -(m/2), -0.5, 0], 
+             [-0.5, 0, 0.5, -0.5, -(m/2), -0.5], 
+             [0, -0.5, 0, 0, -0.5, -(m/2)]]
+        return np.kron(np.array(H).reshape(2,3,2,3).transpose(1,0,3,2).reshape(6,6), np.eye(2)).astype(complex)
+    def C_ij_test(self, i, j, ef, mu):
+        return self.C_ij_(i, j, self.S_matrix(ef, self.kitaevH(mu)))
+    def C_ij_map0(self, i, j):
+        C_map = []
+        efs = np.linspace(-2./au.Eh, 2./au.Eh, num=201, endpoint=True)
+        mus = np.linspace(-2./au.Eh, 2./au.Eh, num=201, endpoint=True)
+        for mu in mus:
+            for ef in efs:
+                self.s.update_mu(np.ones(self.s.parameters.no_dots)*mu)
+                #C_map.append([ef, mu, self.C_ij_test(i, j, ef, mu)])
+                C_map.append([mu, ef, self.C_ij(i, j, ef)])
+        return np.array(C_map)
+    def C_ij_map1(self, i, j):
+        C_map = []
+        efs = np.linspace(-2./au.Eh, 2./au.Eh, num=201, endpoint=True)
+        mus = np.linspace(-2./au.Eh, 2./au.Eh, num=201, endpoint=True)
+        for mul in efs:
+            for mur in mus:
+                self.s.update_mu(np.array([mul, 0., mur]))
+                #C_map.append([ef, mu, self.C_ij_test(i, j, ef, mu)])
+                C_map.append([mul, mur, self.C_ij(i, j, 0.)])
+        return np.array(C_map)
 
 
 class Plotting:
@@ -247,4 +319,14 @@ class Plotting:
         axs[0].imshow(hamiltonian.real)
         axs[1].imshow(hamiltonian.imag)
         plt.savefig('hamiltonian.png')
+        plt.close()
+        
+    def plot_conductance_map(self, C_map, xlabel="", ylabel="", suffix=""):
+        fig, ax = plt.subplots()
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        cc = ax.scatter(x=C_map[:,0]*au.Eh, y=C_map[:,1]*au.Eh, c=C_map[:,2], s=2.)  #, norm=colors.LogNorm())
+        cbar = fig.colorbar(cc, ax=ax)
+        cbar.set_label(r'conductance')
+        plt.savefig('conductance_'+suffix+'.png')
         plt.close()

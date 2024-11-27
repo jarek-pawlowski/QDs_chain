@@ -36,12 +36,12 @@ au = AtomicUnits()
 class Defaults:
     def __init__(self, mu_max=100., t_max=100., b_max=2., d_max=5., lambda_max=2.):
         # potential within a dot (meV)
-        self.mu_default = 0./au.Eh
+        self.mu_default = -.5/au.Eh
         self.mu_range = [-mu_max/au.Eh, mu_max/au.Eh]
         # energy level separation within the dot (meV)
         self.dot_split = 1./au.Eh
         # hopping amplitude (meV)
-        self.t_default = .2/au.Eh
+        self.t_default = .25/au.Eh
         self.t_range = [0., t_max/au.Eh]
         # local Zeeman field (meV)
         self.b_default = .5/au.Eh
@@ -215,6 +215,9 @@ class System:
     
     def update_mu(self, new_mu):
         self.parameters.mu = new_mu
+        
+    def update_b(self, new_b):
+        self.parameters.b = new_b
 
 
 class Transport:
@@ -283,6 +286,15 @@ class Transport:
                 self.s.update_mu(np.array([mul, 0., mur]))
                 #C_map.append([ef, mu, self.C_ij_test(i, j, ef, mu)])
                 C_map.append([mul, mur, self.C_ij(i, j, 0.)])
+        return np.array(C_map)
+    def C_ij_map2(self, i, j):
+        C_map = []
+        bs = np.linspace(0./au.Eh, 2./au.Eh, num=201, endpoint=True)
+        efs = np.linspace(-1./au.Eh, 1./au.Eh, num=201, endpoint=True)
+        for b in bs:
+            for ef in efs:
+                self.s.update_b(np.ones(self.s.parameters.no_dots)*b)
+                C_map.append([b, ef, self.C_ij(i, j, ef)])
         return np.array(C_map)
 
 

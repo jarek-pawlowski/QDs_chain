@@ -12,8 +12,14 @@ plot = utils.Plotting()
 
 transport = utils.Transport(system, gamma=.1)
 
-C_map = transport.C_ij_map0(0, 0)
-plot.plot_conductance_map(C_map, xlabel="$V$ (mV)", ylabel="$E_F$ (meV)", suffix="mu_Ef")
+#C_map = transport.C_ij_map0(0, 0)
+#plot.plot_conductance_map(C_map, xlabel="$V$ (mV)", ylabel="$E_F$ (meV)", suffix="mu_Ef")
 
-C_map = transport.C_ij_map1(0, 0)
-plot.plot_conductance_map(C_map, xlabel="$V_L$ (mV)", ylabel="$V_R$ (meV)", suffix="mul_mur")
+#C_map = transport.C_ij_map1(0, 0)
+#plot.plot_conductance_map(C_map, xlabel="$V_L$ (mV)", ylabel="$V_R$ (meV)", suffix="mul_mur")
+
+C_map = transport.C_ij_map2(0, 0)
+plot.plot_conductance_map(C_map, xlabel="$E_Z$ (mV)", ylabel="$V_{bias}$ (meV)", suffix="Ez_bias_LL")
+
+C_map = transport.C_ij_map2(0, 1)
+plot.plot_conductance_map(C_map, xlabel="$E_Z$ (mV)", ylabel="$V_{bias}$ (meV)", suffix="Ez_bias_LR")

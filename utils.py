@@ -207,8 +207,12 @@ class System:
                 bi = V[:,:,1]
                 ci = V[:,:,2]
                 di = V[:,:,3]
-                Pi = np.sum(bi*np.conjugate(di)-ai*np.conjugate(ci), axis=1).real*2. 
-                polars[i] = np.abs(Pi[0]-Pi[-1])     
+                if majorana_repr: 
+                    Pi = np.sum(bi*np.conjugate(di)-ai*np.conjugate(ci), axis=1).real*2.
+                else:
+                    Pi = np.sum(bi*np.conjugate(di)-ai*np.conjugate(ci), axis=1).imag*2. 
+                polars[i] = Pi[0]-Pi[-1]
+            #if np.abs(eigs[i]) < 0.00004: breakpoint()
             occupations.append(edge_occ)
             polarizations.append(polars)
         return values, eigenvalues, occupations, polarizations

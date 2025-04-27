@@ -44,7 +44,7 @@ class Defaults:
         self.t_default = .25/au.Eh
         self.t_range = [0., t_max/au.Eh]
         # local Zeeman field (meV)
-        self.b_default = .5/au.Eh
+        self.b_default = .5/au.Eh  #.5/au.Eh
         self.b_range = [-b_max/au.Eh, b_max/au.Eh]
         # superconducting gap (meV)
         self.d_default = 0.25/au.Eh
@@ -54,14 +54,14 @@ class Defaults:
         self.ph_d_range = [-np.pi, np.pi]
         # SOI field
         # amplitude:
-        self.l_default = .1*np.pi*2.
+        self.l_default = .166*np.pi*2.  # for 3QD: 1.333*np.pi
         self.l_range = np.array([0., lambda_max])*np.pi*2.
         #angles:
         self.l_rho_default = np.pi/2.
         self.l_rho_range = [0., np.pi]
-        self.l_ksi_default = 0.
+        self.l_ksi_default = np.pi/2.
         self.l_ksi_range = [0., np.pi*2.]
- 
+
         
 def rand_sample(length=None, range=[0.,1.]):
     if length in None:
@@ -300,6 +300,34 @@ class Transport:
                 self.s.update_b(np.ones(self.s.parameters.no_dots)*b)
                 C_map.append([b, ef, self.C_ij(i, j, ef)])
         return np.array(C_map)
+    def C_ij_map20(self, i, j):
+        C_map = []
+        efs = np.linspace(-2./au.Eh, 2./au.Eh, num=201, endpoint=True)
+        mus = np.linspace(-2./au.Eh, 2./au.Eh, num=201, endpoint=True)
+        for mul in mus:
+            for ef in efs:
+                self.s.update_mu(np.array([mul-0.65/au.Eh, -0.65/au.Eh]))
+                C_map.append([ef, mul, self.C_ij(i, j, ef)])
+        return np.array(C_map)
+
+
+class Poor:
+    def kitaev2H(self, vl, vr, tt, dd):
+        H = [[ vl, tt, 0 ,-dd], 
+             [ tt, vr, dd, 0 ], 
+             [ 0 , dd,-vl,-tt], 
+             [-dd, 0 ,-tt,-vr]]
+        return np.array(H)/2.
+    def kitaev3H(self, vl, vc, vr, t1, t2, d1, d2, fi):
+        z2 = d2*np.exp(1.j*fi) 
+        z3 = d2*np.exp(-1.j*fi) 
+        H = [[ vl, t1, 0 , 0 ,-d1, 0 ], 
+             [ t1, vc, t2, d1, 0 ,-z2], 
+             [ 0 , t2, vr, 0 , z2, 0 ], 
+             [ 0 , d1, 0 ,-vl,-t1, 0 ], 
+             [-d1, 0 , z3,-t1,-vc,-t2], 
+             [ 0 ,-z3, 0 , 0 ,-t2,-vr]]
+        return np.array(H)/2.
 
 
 class Plotting:

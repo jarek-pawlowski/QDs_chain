@@ -7,6 +7,12 @@ from matplotlib import colors
 
 def abs2(c): return c.real**2 + c.imag**2
 
+def rand_sample(length=None, range=[0.,1.]):
+    if length is None:
+        return np.random.random()*(range[1]-range[0])+range[0]
+    else:
+        return np.random.rand(length)*(range[1]-range[0])+range[0]
+
 
 class AtomicUnits:
     """Class storing atomic units.
@@ -36,13 +42,13 @@ au = AtomicUnits()
 class Defaults:
     def __init__(self, mu_max=100., t_max=100., b_max=2., d_max=5., lambda_max=2.):
         # potential within a dot (meV)
-        self.mu_default = -.5/au.Eh
-        self.mu_range = [-mu_max/au.Eh, mu_max/au.Eh]
+        self.mu_default = 0.62/au.Eh
+        self.mu_range = [.2/au.Eh, 1./au.Eh]
         # energy level separation within the dot (meV)
         self.dot_split = 1./au.Eh
         # hopping amplitude (meV)
         self.t_default = .25/au.Eh
-        self.t_range = [0., t_max/au.Eh]
+        self.t_range = [.1/au.Eh, .4/au.Eh]
         # local Zeeman field (meV)
         self.b_default = .5/au.Eh  #.5/au.Eh
         self.b_range = [-b_max/au.Eh, b_max/au.Eh]
@@ -54,20 +60,14 @@ class Defaults:
         self.ph_d_range = [-np.pi, np.pi]
         # SOI field
         # amplitude:
-        self.l_default = .166*np.pi*2.  # for 3QD: 1.333*np.pi
-        self.l_range = np.array([0., lambda_max])*np.pi*2.
+        self.l_default = 0.133*np.pi*2.  # 0.166*np.pi*2., for 3QD: 0.133*np.pi*2.  # optimal: d/b = cos(l)
+        self.l_range = np.array([0.,.5])*np.pi*2.
         #angles:
         self.l_rho_default = np.pi/2.
         self.l_rho_range = [0., np.pi]
         self.l_ksi_default = np.pi/2.
         self.l_ksi_range = [0., np.pi*2.]
-
-        
-def rand_sample(length=None, range=[0.,1.]):
-    if length in None:
-        return np.random.random()*(range[1]-range[0])+range[0]
-    else:
-        return np.random.rand(length)*(range[1]-range[0])+range[0]
+         
          
 class Parameters:
     def __init__(self, no_dots, no_levels, default_parameters):
@@ -102,6 +102,14 @@ class Parameters:
         self.l = rand_sample(self.no_dots, self.def_par.l_range)
         self.l_rho = rand_sample(self.no_dots, self.def_par.l_rho_range)
         self.l_ksi = rand_sample(self.no_dots, self.def_par.l_ksi_range)
+        
+    def set_random_parameters_free_reduced(self):
+        self.mu = rand_sample(self.no_dots, self.def_par.mu_range)
+        self.t = rand_sample(self.no_dots-1, self.def_par.t_range)
+        self.l = rand_sample(self.no_dots-1, self.def_par.l_range)
+        
+    def get_parameters_reduced(self):
+        return np.concatenate([self.mu, self.t, self.l])
 
 
 class System:
@@ -225,8 +233,15 @@ class System:
 
 
 class Transport:
-    def __init__(self, system, gamma=1.):
+    def __init__(self, system, gamma=1., density=201, reference_point=None):
         self.s = system
+        self.d = density
+        if reference_point is not None:
+            self.ref_mu = reference_point.mu
+            self.ref_b = reference_point.b
+        else:
+            self.ref_mu = np.ones(self.s.parameters.no_dots)*self.s.parameters.def_par.mu_default
+            self.ref_b = np.ones(self.s.parameters.no_dots)*self.s.parameters.def_par.b_default
         # build W matrix
         self.W = np.zeros((self.s.dim,self.s.dim))
         sg = np.sqrt(gamma/au.Eh)
@@ -273,8 +288,8 @@ class Transport:
         return self.C_ij_(i, j, self.S_matrix(ef, self.kitaevH(mu)))
     def C_ij_map0(self, i, j):
         C_map = []
-        efs = np.linspace(-2./au.Eh, 2./au.Eh, num=201, endpoint=True)
-        mus = np.linspace(-2./au.Eh, 2./au.Eh, num=201, endpoint=True)
+        efs = np.linspace(-2./au.Eh, 2./au.Eh, num=self.d, endpoint=True)
+        mus = np.linspace(-2./au.Eh, 2./au.Eh, num=self.d, endpoint=True)
         for mu in mus:
             for ef in efs:
                 self.s.update_mu(np.ones(self.s.parameters.no_dots)*mu)
@@ -283,8 +298,8 @@ class Transport:
         return np.array(C_map)
     def C_ij_map1(self, i, j):
         C_map = []
-        efs = np.linspace(-2./au.Eh, 2./au.Eh, num=201, endpoint=True)
-        mus = np.linspace(-2./au.Eh, 2./au.Eh, num=201, endpoint=True)
+        efs = np.linspace(-2./au.Eh, 2./au.Eh, num=self.d, endpoint=True)
+        mus = np.linspace(-2./au.Eh, 2./au.Eh, num=self.d, endpoint=True)
         for mul in efs:
             for mur in mus:
                 self.s.update_mu(np.array([mul, 0., mur]))
@@ -293,8 +308,8 @@ class Transport:
         return np.array(C_map)
     def C_ij_map2(self, i, j):
         C_map = []
-        bs = np.linspace(0./au.Eh, 2./au.Eh, num=201, endpoint=True)
-        efs = np.linspace(-1./au.Eh, 1./au.Eh, num=201, endpoint=True)
+        bs = np.linspace(0./au.Eh, 2./au.Eh, num=self.d, endpoint=True)
+        efs = np.linspace(-1./au.Eh, 1./au.Eh, num=self.d, endpoint=True)
         for b in bs:
             for ef in efs:
                 self.s.update_b(np.ones(self.s.parameters.no_dots)*b)
@@ -302,12 +317,34 @@ class Transport:
         return np.array(C_map)
     def C_ij_map20(self, i, j):
         C_map = []
-        efs = np.linspace(-2./au.Eh, 2./au.Eh, num=201, endpoint=True)
-        mus = np.linspace(-2./au.Eh, 2./au.Eh, num=201, endpoint=True)
+        efs = np.linspace(-2./au.Eh, 2./au.Eh, num=self.d, endpoint=True)
+        mus = np.linspace(-2./au.Eh, 2./au.Eh, num=self.d, endpoint=True)
         for mul in mus:
             for ef in efs:
                 self.s.update_mu(np.array([mul-0.65/au.Eh, -0.65/au.Eh]))
                 C_map.append([ef, mul, self.C_ij(i, j, ef)])
+        return np.array(C_map)
+    def C_ij_map21(self, i, j, k):
+        C_map = []
+        efs = np.linspace(-1.5/au.Eh, 1.5/au.Eh, num=self.d, endpoint=True)
+        dets = np.linspace(-1./au.Eh, 1./au.Eh, num=self.d, endpoint=True)
+        mask = [0]*self.s.parameters.no_dots
+        mask[k] = 1
+        self.s.update_b(self.ref_b)
+        for det in dets:
+            for ef in efs:
+                self.s.update_mu(self.ref_mu+np.array(mask)*det)
+                C_map.append([det, ef, self.C_ij(i, j, ef)])
+        return np.array(C_map)
+    def C_ij_map22(self, i, j):
+        C_map = []
+        efs = np.linspace(-1.5/au.Eh, 1.5/au.Eh, num=self.d, endpoint=True)
+        bs = np.linspace(-.5/au.Eh, .5/au.Eh, num=self.d, endpoint=True)
+        self.s.update_mu(self.ref_mu)
+        for b in bs:
+            for ef in efs:
+                self.s.update_b(self.ref_b+np.ones(self.s.parameters.no_dots)*b)
+                C_map.append([b, ef, self.C_ij(i, j, ef)])
         return np.array(C_map)
 
 

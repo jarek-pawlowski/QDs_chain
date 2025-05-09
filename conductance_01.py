@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 import utils
 
 defaults = utils.Defaults()
@@ -7,7 +9,9 @@ defaults = utils.Defaults()
 # defaults.l_default = 1.9
 # defaults.t_default *= 2.
 
-parameters = utils.Parameters(no_dots=2, no_levels=1, default_parameters=defaults)
+parameters = utils.Parameters(no_dots=3, no_levels=1, default_parameters=defaults)
+parameters.set_random_parameters_free_reduced()
+reference = deepcopy(parameters)
 system = utils.System(parameters)
 plot = utils.Plotting()
 
@@ -16,6 +20,10 @@ paramsweep, eigenvalues, occupations, polarizations = system.parameter_sweeping(
 plot.plot_eigenvalues(paramsweep, eigenvalues, polarizations, range=[-1.,1.])
 
 
+transport = utils.Transport(system, gamma=.1, density=201, reference_point=reference)
+C_map = transport.C_ij_map21(0, 0, 2)
+plot.plot_conductance_map(C_map, xlabel="$\Delta{}V_L$ (mV)", ylabel="$E_F$ (meV)", suffix="2QD_det_ef")
+
 transport = utils.Transport(system, gamma=.1)
-C_map = transport.C_ij_map20(1, 1)
-plot.plot_conductance_map(C_map, xlabel="$E_F$ (mV)", ylabel="$V_L$ (meV)", suffix="2QD_mul_ef")
+C_map = transport.C_ij_map22(0, 0)
+plot.plot_conductance_map(C_map, xlabel="$\Delta{}B_z$ (mV)", ylabel="$E_F$ (meV)", suffix="2QD_bz_ef")

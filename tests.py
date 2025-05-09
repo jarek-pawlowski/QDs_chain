@@ -91,14 +91,15 @@ m2 = np.concatenate([np.array([1,1,-1,-1])*-1., np.array([0,0,0,0]*(no_dots-2)),
 points = []
 majoranas = []
 for v in np.linspace(-1.5/au.Eh, 1.5/au.Eh, num=101):
-    system.update_mu(np.ones(system.parameters.no_dots)*v)
+    system.update_mu(np.ones(no_dots)*0.48/au.Eh+np.array([1,0,0,0,0])*v)
+    #system.update_mu(np.ones(no_dots)*v)
     hamiltonian = system.full_hamiltonian()
     eigs, eigvs = eigh(hamiltonian, eigvals_only=False)
     ms = []
     for ie, eig in enumerate(eigs):
         ml = np.conj(eigvs[:,ie])@m1
         mr = np.conj(eigvs[:,ie])@m2
-        zm = np.exp(-np.abs(eig)/(0.1/au.Eh))
+        zm = np.exp(-np.abs(eig)/(0.01/au.Eh))  # 0.1
         points.append([v, eig+ie*0.005/au.Eh, (np.abs(ml)-np.abs(mr))*zm])
         #points.append([v, eig+ie*0.005/au.Eh, (np.abs(eigvs[:,ie])**2).reshape(-1,4).sum(axis=0).reshape(2,2).sum(axis=1)[0]])
         #points.append([v, eig+ie*0.005/au.Eh, (np.abs(eigvs[:,ie])**2).reshape(-1,4).sum(axis=1)[0]*2])

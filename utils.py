@@ -60,7 +60,7 @@ class Defaults:
         self.ph_d_range = [-np.pi, np.pi]
         # SOI field
         # amplitude:
-        self.l_default = 0.133*np.pi*2.  # 0.166*np.pi*2., for 3QD: 0.133*np.pi*2.  # optimal: d/b = cos(l)
+        self.l_default = 0.133*np.pi*2.  # 0.166*np.pi*2. for 2QD, for 3QD: 0.133*np.pi*2.  # optimal: d/b = cos(l)
         self.l_range = np.array([0.,.5])*np.pi*2.
         #angles:
         self.l_rho_default = np.pi/2.

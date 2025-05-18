@@ -8,7 +8,7 @@ defaults = utils.Defaults()
 
 dirpath = './3qd_train'
 
-for s in range(100):
+for s in range(400):
     parameters = utils.Parameters(no_dots=3, no_levels=1, default_parameters=defaults)
     parameters.set_random_parameters_free_reduced()
     reference = deepcopy(parameters)

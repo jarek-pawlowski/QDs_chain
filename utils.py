@@ -44,11 +44,15 @@ class Defaults:
         # potential within a dot (meV)
         self.mu_default = 0.62/au.Eh
         self.mu_range = [.2/au.Eh, 1./au.Eh]
+        #self.mu_range = [.61/au.Eh, .63/au.Eh]
+        #self.mu_range = [.62/au.Eh, .62/au.Eh]
         # energy level separation within the dot (meV)
         self.dot_split = 1./au.Eh
         # hopping amplitude (meV)
         self.t_default = .25/au.Eh
         self.t_range = [.1/au.Eh, .4/au.Eh]
+        #self.t_range = [.24/au.Eh, .26/au.Eh]
+        #self.t_range = [.25/au.Eh, .25/au.Eh]
         # local Zeeman field (meV)
         self.b_default = .5/au.Eh  #.5/au.Eh
         self.b_range = [-b_max/au.Eh, b_max/au.Eh]
@@ -62,6 +66,8 @@ class Defaults:
         # amplitude:
         self.l_default = 0.133*np.pi*2.  # 0.166*np.pi*2. for 2QD, for 3QD: 0.133*np.pi*2.  # optimal: d/b = cos(l)
         self.l_range = np.array([0.,.5])*np.pi*2.
+        #self.l_range = np.array([0.130, 0.136])*np.pi*2.
+        #self.l_range = np.array([0.133, 0.133])*np.pi*2.
         #angles:
         self.l_rho_default = np.pi/2.
         self.l_rho_range = [0., np.pi]
@@ -409,5 +415,15 @@ class Plotting:
         cc = ax.scatter(x=C_map[:,0]*au.Eh, y=C_map[:,1]*au.Eh, c=C_map[:,2], s=2.)  #, norm=colors.LogNorm())
         cbar = fig.colorbar(cc, ax=ax)
         cbar.set_label(r'conductance')
-        plt.savefig('conductance_'+suffix+'.png')
+        plt.savefig(os.path.join(self.directory, 'conductance_'+suffix+'.png'))
+        plt.close()
+        
+    def plot_conductance_map_(self, C_map, xlabel="", ylabel="", suffix=""):
+        fig, ax = plt.subplots()
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        cc = ax.imshow(C_map.T)
+        cbar = fig.colorbar(cc, ax=ax)
+        cbar.set_label(r'conductance')
+        plt.savefig(os.path.join(self.directory, 'conductance_'+suffix+'.png'))
         plt.close()

@@ -1,12 +1,15 @@
 import os
 import glob
 import typing as t
+from copy import deepcopy
 import numpy as np
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
+from torchvision import transforms
+from timm import create_model
 
 from utils import au
 
@@ -19,15 +22,20 @@ class CustomDataset(Dataset):
         super().__init__()
         self.data_dir = data_dir
         self.no_samples = len(glob.glob1(self.data_dir, "*.npy"))
-
+        self.transform = transforms.Compose([transforms.ToTensor(),
+                                             transforms.Resize((224, 224)),
+                                             transforms.Normalize(mean=[0.5], std=[0.5])])
+        
     def __len__(self):
         return self.no_samples
 
     def __getitem__(self, idx):
         C_map = np.load(os.path.join(self.data_dir, 'sample_'+str(idx)+'.npy'))
+        C_map0 = torch.tensor(C_map, dtype=torch.float32)  # 101x101
+        C_map = torch.stack([self.transform(np.array(C_m)) for C_m in C_map]).squeeze(1).to(torch.float32)  # 224x224 for ViT
         label = np.loadtxt(os.path.join(self.data_dir, 'label_'+str(idx)+'.txt'))
         label[:5] *= au.Eh  # to be in meVs
-        return torch.tensor(C_map, dtype=torch.float32), torch.tensor(label).type((torch.float32))
+        return C_map, C_map0, torch.tensor(label).type((torch.float32))
 
 def parse_dataset(trainset_directory, testset_directory, batch_size=100):
     train_loader = DataLoader(CustomDataset(trainset_directory), batch_size=batch_size)
@@ -47,10 +55,10 @@ class Hamiltonian:
     def onsite_matrix(self, mu, i=0):
         par = self.p
         h_onsite = torch.zeros((mu.size()[0], 4, 4), dtype=torch.complex64, device=self.d)     
-        h_onsite[:,0,0] = -(mu+par.mu[i]*au.Eh)+par.b[i]*au.Eh 
-        h_onsite[:,1,1] = -(mu+par.mu[i]*au.Eh)-par.b[i]*au.Eh 
-        h_onsite[:,2,2] =  (mu+par.mu[i]*au.Eh)-par.b[i]*au.Eh 
-        h_onsite[:,3,3] =  (mu+par.mu[i]*au.Eh)+par.b[i]*au.Eh 
+        h_onsite[:,0,0] = -mu+par.b[i]*au.Eh 
+        h_onsite[:,1,1] = -mu-par.b[i]*au.Eh 
+        h_onsite[:,2,2] =  mu-par.b[i]*au.Eh 
+        h_onsite[:,3,3] =  mu+par.b[i]*au.Eh 
         h_onsite[:,0,3] =  par.d[i]*au.Eh*torch.exp(torch.tensor( 1.j)*par.ph_d*i)
         h_onsite[:,1,2] = -par.d[i]*au.Eh*torch.exp(torch.tensor( 1.j)*par.ph_d*i)
         h_onsite[:,2,1] = -par.d[i]*au.Eh*torch.exp(torch.tensor(-1.j)*par.ph_d*i)
@@ -60,12 +68,13 @@ class Hamiltonian:
     def hopping_matrix(self, t, l, i=0):
         par = self.p
         hopping = torch.zeros((t.size()[0], 4, 4), dtype=torch.complex64, device=self.d)
-        phr = torch.tensordot((t*torch.cos(l*torch.pi*2)).to(torch.float32), torch.eye(2, device=self.d), dims=0) 
+        phr = torch.tensordot((t*torch.cos(l)).to(torch.float32), torch.eye(2, device=self.d), dims=0) 
         l_rho = torch.tensor(par.l_rho[i], dtype=torch.float32, device=self.d)
         l_ksi = torch.tensor(par.l_ksi[i], dtype=torch.float32, device=self.d)
         lambda_versor = [torch.sin(l_rho)*torch.cos(l_ksi), torch.sin(l_rho)*torch.sin(l_ksi), torch.cos(l_rho)]
-        phi = torch.tensordot((t*torch.sin(l*torch.pi*2)).to(torch.complex64), self.sx*lambda_versor[0]+self.sy*lambda_versor[1]+self.sz*lambda_versor[2], dims=0)
+        phi = torch.tensordot((t*torch.sin(l)).to(torch.complex64), self.sx*lambda_versor[0]+self.sy*lambda_versor[1]+self.sz*lambda_versor[2], dims=0)
         hopping[:,0:2,0:2] = phi*1j + phr
+        phi = torch.tensordot((t*torch.sin(l)).to(torch.complex64), self.sx*lambda_versor[0]+self.sy.T*lambda_versor[1]+self.sz*lambda_versor[2], dims=0)
         hopping[:,2:4,2:4] = phi*1j - phr
         return hopping
    
@@ -118,7 +127,7 @@ class Transport:
         mus_expanded = torch.zeros((det_num, 3), device=self.d)
         mus_expanded[:, k] = dets
         mus_expanded = mus_expanded.view(det_num, 1, 3).expand(det_num, h_tensor.shape[0], 3).clone()
-        mus_expanded += (predicted_params[:,:3]+torch.tensor(self.ref_mu, device=self.d).expand(h_tensor.shape[0], 3)).expand(det_num, h_tensor.shape[0], 3)
+        mus_expanded += predicted_params[:,:3].expand(det_num, h_tensor.shape[0], 3)
         hs = h_tensor.view(1, *h_tensor.shape).expand(det_num, *h_tensor.shape)
         hs_modified = self.torch_h_set_mu(hs, mus_expanded)
         cmap = self._torch_cmap(hs_modified, efs, i, j, 1, gamma)
@@ -166,7 +175,7 @@ class Transport:
         
         trace_vmapped = self.nest_vmap(torch.trace, len(r_he.shape) - 2)
         c_map = (2.*dij*n_levels - trace_vmapped(r_ee @ torch.conj(r_ee.transpose(-2, -1))) + trace_vmapped(r_he @ torch.conj(r_he.transpose(-2, -1)))).real
-        return c_map.moveaxis(0, -1).moveaxis(0, -1)
+        return torch.permute(c_map, (2,1,0))
 
     def nest_vmap(self, func, n_dims):
         for _ in range(n_dims):
@@ -268,8 +277,7 @@ class Transport:
         return Smat
 
 
-class Encoder(nn.Module):
-    
+class Encoder_simpleCNN(nn.Module): 
     def __init__(self,
                 default_parameters,
                 device,
@@ -287,8 +295,8 @@ class Encoder(nn.Module):
         muf = default_parameters.mu_range[0]*au.Eh
         ts = (default_parameters.t_range[1]-default_parameters.t_range[0])*au.Eh
         tf = default_parameters.t_range[0]*au.Eh
-        ls = (default_parameters.l_range[1]-default_parameters.l_range[0])/np.pi/2
-        lf = default_parameters.l_range[0]/np.pi/2
+        ls = (default_parameters.l_range[1]-default_parameters.l_range[0])
+        lf = default_parameters.l_range[0]
         self.scale = (torch.tensor([mus,mus,mus,ts,ts,ls,ls])*1.2).to(device)
         self.offset = torch.tensor([muf,muf,muf,tf,tf,lf,lf]).to(device) - self.scale*0.1/1.2
         
@@ -302,6 +310,56 @@ class Encoder(nn.Module):
         x = self.output_mlp(x)
         x = self.output(x)*self.scale.expand_as(x) + self.offset.expand_as(x)
         return x
+
+
+class Encoder_ViT(nn.Module):
+    def __init__(self,
+                 default_parameters,
+                 device,
+                 output_size: int):
+        super().__init__()
+        self.feature_extractor = create_model('vit_base_patch16_224', pretrained=True)
+        self.feature_extractor.reset_classifier(0)  # Removes the final classification head 
+        new_input_channels = 16
+        # get and modify the existing patch embedding layer
+        old_patch_embed = deepcopy(self.feature_extractor.patch_embed)
+        self.feature_extractor.patch_embed.proj = nn.Conv2d(
+            in_channels=new_input_channels,
+            out_channels=old_patch_embed.proj.out_channels,
+            kernel_size=old_patch_embed.proj.kernel_size,
+            stride=old_patch_embed.proj.stride,
+            padding=old_patch_embed.proj.padding,
+            bias=old_patch_embed.proj.bias is not None
+        )
+        # copying RGB channels to new 16, no idea how this can be done better
+        with torch.no_grad():
+            self.feature_extractor.patch_embed.proj.weight[:,:3] = old_patch_embed.proj.weight
+            self.feature_extractor.patch_embed.proj.weight[:,3:6] = old_patch_embed.proj.weight
+            self.feature_extractor.patch_embed.proj.weight[:,6:9] = old_patch_embed.proj.weight
+            self.feature_extractor.patch_embed.proj.weight[:,9:12] = old_patch_embed.proj.weight
+            self.feature_extractor.patch_embed.proj.weight[:,12:15] = old_patch_embed.proj.weight
+            self.feature_extractor.patch_embed.proj.weight[:,15] = old_patch_embed.proj.weight[:,0]
+        #
+        self.no_features = 768
+        self.output_mlp = nn.Sequential(nn.Linear(self.no_features, 64), nn.ReLU(), 
+                                        nn.Linear(64, 32), nn.ReLU(), 
+                                        nn.Linear(32, output_size), nn.Sigmoid())
+        mus = (default_parameters.mu_range[1]-default_parameters.mu_range[0])*au.Eh
+        muf = default_parameters.mu_range[0]*au.Eh
+        ts = (default_parameters.t_range[1]-default_parameters.t_range[0])*au.Eh
+        tf = default_parameters.t_range[0]*au.Eh
+        ls = (default_parameters.l_range[1]-default_parameters.l_range[0])
+        lf = default_parameters.l_range[0]
+        self.scale = (torch.tensor([mus,mus,mus,ts,ts,ls,ls])*1.2).to(device)
+        self.offset = torch.tensor([muf,muf,muf,tf,tf,lf,lf]).to(device) - self.scale*0.1/1.2
+
+    def parameters(self):
+        return self.output_mlp.parameters()
+
+    def forward(self, x):
+        x = self.feature_extractor(x)
+        x = self.output_mlp(x)
+        return x*self.scale.expand_as(x) + self.offset.expand_as(x)
 
 
 class Decoder(nn.Module):
@@ -325,7 +383,8 @@ class Autoencoder(nn.Module):
                  input_size: [int,int] = [101,101],
                  latent_dim: int = 7):
         super().__init__()
-        self.encoder = Encoder(parameters.def_par, device, num_input_channels*input_size[0]*input_size[1], latent_dim).to(device) 
+        #self.encoder = Encoder_simpleCNN(parameters.def_par, device, num_input_channels*input_size[0]*input_size[1], latent_dim).to(device) 
+        self.encoder = Encoder_ViT(parameters.def_par, device, latent_dim).to(device) 
         self.decoder = Decoder(parameters, device).to(device)
         
     def parameters(self):       
@@ -356,18 +415,18 @@ class Experiments():
         self.optimizer = optimizer
         self.criterion = criterion
         
-    def loss(self, output, sample, parameters):        
+    def loss(self, output, sample, parameters): 
         return self.criterion(output[0], parameters), self.criterion(output[1], sample)
         
     def train(self, epoch_number):
         self.model.train()
         train_loss_p = 0.
         train_loss_c = 0.
-        for batch_idx, (sample, parameters) in enumerate(self.train_loader):
-            sample, parameters = sample.to(self.device), parameters.to(self.device)
+        for batch_idx, (sample, sample0, parameters) in enumerate(self.train_loader):
+            sample, sample0, parameters = sample.to(self.device), sample0.to(self.device), parameters.to(self.device)
             self.optimizer.zero_grad()
             output = self.model(sample)
-            loss_p, loss_c = self.loss(output, sample, parameters)
+            loss_p, loss_c = self.loss(output, sample0, parameters)
             # C reconstruction loss only ??
             loss_c.backward()
             self.optimizer.step()
@@ -384,10 +443,10 @@ class Experiments():
         self.model.eval()
         test_loss_p = 0.
         test_loss_c = 0.
-        for batch_idx, (sample, parameters) in enumerate(self.test_loader):
-            sample, parameters = sample.to(self.device), parameters.to(self.device)
+        for batch_idx, (sample, sample0, parameters) in enumerate(self.test_loader):
+            sample, sample0, parameters = sample.to(self.device), sample0.to(self.device), parameters.to(self.device)
             output = self.model(sample)
-            loss_p, loss_c = self.loss(output, sample, parameters)
+            loss_p, loss_c = self.loss(output, sample0, parameters)
             test_loss_p += loss_p.item()
             test_loss_c += loss_c.item()
         test_loss_p /= len(self.test_loader)
@@ -403,6 +462,14 @@ class Experiments():
             train_loss.append([*self.train(epoch_number)])
             validation_loss.append([*self.test()])
         return train_loss, validation_loss
+    
+    def get_prediction(self, i):
+        self.model.eval()
+        sample, sample0, parameters = next(iter(self.test_loader))
+        sample, parameters = sample.to(self.device), parameters.to(self.device)
+        output = self.model(sample)
+        return output[1][i].detach().cpu(), sample0[i]
+    
 
 def plot_loss(train_loss, validation_loss, title):
     plt.grid(True)

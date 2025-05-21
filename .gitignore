@@ -1,5 +1,7 @@
 __pycache__
 olds/
 3qd_train/
+3qd_train0/
 3qd_test/
 *.png
+*.zip

@@ -6,9 +6,9 @@ import utils
 
 defaults = utils.Defaults()
 
-dirpath = './3qd_train'
+dirpath = './3qd_train0'
 
-for s in range(400):
+for s in range(100):
     parameters = utils.Parameters(no_dots=3, no_levels=1, default_parameters=defaults)
     parameters.set_random_parameters_free_reduced()
     reference = deepcopy(parameters)

@@ -316,15 +316,15 @@ class Encoder_ViT(nn.Module):
     def __init__(self,
                  default_parameters,
                  device,
+                 num_input_channels,
                  output_size: int):
         super().__init__()
         self.feature_extractor = create_model('vit_base_patch16_224', pretrained=False)
-        self.feature_extractor.reset_classifier(0)  # Removes the final classification head 
-        new_input_channels = 16
+        self.feature_extractor.reset_classifier(0)  # Removes the final classification head
         # get and modify the existing patch embedding layer
         old_patch_embed = deepcopy(self.feature_extractor.patch_embed)
         self.feature_extractor.patch_embed.proj = nn.Conv2d(
-            in_channels=new_input_channels,
+            in_channels=num_input_channels,
             out_channels=old_patch_embed.proj.out_channels,
             kernel_size=old_patch_embed.proj.kernel_size,
             stride=old_patch_embed.proj.stride,
@@ -431,7 +431,7 @@ class Autoencoder(nn.Module):
         super().__init__()
         self.bypass = bypass
         #self.encoder = Encoder_simpleCNN(parameters.def_par, device, num_input_channels*input_size[0]*input_size[1], latent_dim).to(device) 
-        self.encoder = Encoder_ViT(parameters.def_par, device, latent_dim).to(device) 
+        self.encoder = Encoder_ViT(parameters.def_par, device, num_input_channels, latent_dim).to(device) 
         self.decoder = Decoder(parameters, device, self.bypass).to(device)
         
     def parameters(self):       

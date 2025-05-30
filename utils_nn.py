@@ -318,7 +318,7 @@ class Encoder_ViT(nn.Module):
                  device,
                  output_size: int):
         super().__init__()
-        self.feature_extractor = create_model('vit_base_patch16_224', pretrained=True)
+        self.feature_extractor = create_model('vit_base_patch16_224', pretrained=False)
         self.feature_extractor.reset_classifier(0)  # Removes the final classification head 
         new_input_channels = 16
         # get and modify the existing patch embedding layer
@@ -354,7 +354,8 @@ class Encoder_ViT(nn.Module):
         self.offset = torch.tensor([muf,muf,muf,tf,tf,lf,lf]).to(device) - self.scale*0.1/1.2
 
     def parameters(self):
-        return self.output_mlp.parameters()
+        #return self.output_mlp.parameters()
+        return list(self.feature_extractor.parameters()) + list(self.output_mlp.parameters())
 
     def forward(self, x):
         x = self.feature_extractor(x)
@@ -362,17 +363,61 @@ class Encoder_ViT(nn.Module):
         return x*self.scale.expand_as(x) + self.offset.expand_as(x)
 
 
+class DeconvNet(nn.Module):
+
+    def __init__(self,
+                 input_dim : int,
+                 num_input_channels : int,
+                 num_output_channels : int,
+                 num_hidden_channels : int,
+                 act_fn : object = nn.GELU):
+        super().__init__()
+        self.input_dim = input_dim
+        self.latent_dim = input_dim**2
+        c_hid = num_hidden_channels
+        self.linear = nn.Sequential(
+            nn.Linear(self.latent_dim, self.latent_dim),
+            act_fn()
+        )
+        self.net = nn.Sequential(
+            nn.ConvTranspose2d(num_input_channels, 2*c_hid, kernel_size=3, stride=2),
+            act_fn(),
+            nn.ConvTranspose2d(2*c_hid, c_hid, kernel_size=3, stride=2),
+            act_fn(),
+            nn.ConvTranspose2d(c_hid, c_hid, kernel_size=3, stride=2),
+            act_fn(),
+            nn.Conv2d(c_hid, num_output_channels, kernel_size=3),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        x = x.view(x.shape[0], x.shape[1], self.latent_dim)
+        x = self.linear(x).reshape(x.shape[0], x.shape[1], self.input_dim, self.input_dim)
+        x = self.net(x)*2.
+        return x
+
+
 class Decoder(nn.Module):
     
-    def __init__(self, parameters, device):
+    def __init__(self, parameters, device, bypass=False):
         super().__init__()
         self.hamiltonian = Hamiltonian(parameters, device)
         self.transport = Transport(parameters, device)
+        self.bypass = bypass
+        if self.bypass:
+            self.bypass_network = DeconvNet(12, 2, 16, 32)
+            
+    def parameters(self):
+        return self.bypass_network.parameters()
+    
     def forward(self, x):
         # x should be of shape [batch, no_parmeters]
         h_tensor = self.hamiltonian.generate(x)
-        return self.transport.torch_conductance_collection(h_tensor, x)
-        
+        if self.bypass:
+            return self.transport.torch_conductance_collection(h_tensor, x), self.bypass_network(torch.stack((h_tensor.real, h_tensor.imag), 1))
+        else:
+            return self.transport.torch_conductance_collection(h_tensor, x)
+
 
 class Autoencoder(nn.Module):
 
@@ -381,15 +426,19 @@ class Autoencoder(nn.Module):
                  device,
                  num_input_channels: int = 16,
                  input_size: [int,int] = [101,101],
-                 latent_dim: int = 7):
+                 latent_dim: int = 7,
+                 bypass: bool = False):
         super().__init__()
+        self.bypass = bypass
         #self.encoder = Encoder_simpleCNN(parameters.def_par, device, num_input_channels*input_size[0]*input_size[1], latent_dim).to(device) 
         self.encoder = Encoder_ViT(parameters.def_par, device, latent_dim).to(device) 
-        self.decoder = Decoder(parameters, device).to(device)
+        self.decoder = Decoder(parameters, device, self.bypass).to(device)
         
     def parameters(self):       
-        #return list(self.encoder.parameters()) + list(self.decoder.parameters())
-        return self.encoder.parameters()
+        if self.bypass:
+            return list(self.encoder.parameters()) + list(self.decoder.parameters())
+        else:
+            return self.encoder.parameters()
 
     def train(self):
         self.encoder.train()
@@ -401,42 +450,62 @@ class Autoencoder(nn.Module):
 
     def forward(self, x):
         z = self.encoder(x)
-        x_hat = self.decoder(z)
-        return [z, x_hat]
+        if self.bypass:
+            x_hat, x_prime = self.decoder(z)
+            return [z, x_hat, x_prime]
+        else:
+            x_hat = self.decoder(z)
+            return [z, x_hat]
 
 
 class Experiments():
 
-    def __init__(self, device, model, train_loader, test_loader, optimizer, criterion=nn.MSELoss()):
+    def __init__(self, device, model, train_loader, test_loader, optimizer, criterion=nn.MSELoss(), bypass=False):
         self.device = device
         self.model = model
         self.train_loader = train_loader
         self.test_loader = test_loader
         self.optimizer = optimizer
         self.criterion = criterion
+        self.bypass = bypass
         
     def loss(self, output, sample, parameters): 
-        return self.criterion(output[0], parameters), self.criterion(output[1], sample)
+        if self.bypass:
+            return self.criterion(output[0], parameters), self.criterion(output[1], sample), self.criterion(output[2], sample)
+        else:    
+            return self.criterion(output[0], parameters), self.criterion(output[1], sample)
         
     def train(self, epoch_number):
         self.model.train()
         train_loss_p = 0.
         train_loss_c = 0.
+        if self.bypass:
+            train_loss_b = 0.       
         for batch_idx, (sample, sample0, parameters) in enumerate(self.train_loader):
             sample, sample0, parameters = sample.to(self.device), sample0.to(self.device), parameters.to(self.device)
             self.optimizer.zero_grad()
             output = self.model(sample)
-            loss_p, loss_c = self.loss(output, sample0, parameters)
-            # C reconstruction loss only ??
-            loss_c.backward()
+            if self.bypass:
+                loss_p, loss_c, loss_b = self.loss(output, sample0, parameters)
+            else:
+                loss_p, loss_c = self.loss(output, sample0, parameters)
+            # C reconstruction loss (+ bypass loss) only ??
+            loss = loss_c + loss_b
+            loss.backward()
             self.optimizer.step()
             train_loss_p += loss_p.item()
             train_loss_c += loss_c.item()
+            if self.bypass:
+                train_loss_b += loss_b.item()
         print('Train Epoch: {}'.format(epoch_number))
         train_loss_p /= len(self.train_loader)
         train_loss_c /= len(self.train_loader)
+        if self.bypass:
+            train_loss_b /= len(self.train_loader)
         print('\tTrain set: Average parameters prediction loss: {:.4f}'.format(train_loss_p))
         print('\tTrain set: Average C reconstruction loss: {:.4f}'.format(train_loss_c))
+        if self.bypass:
+            print('\tTrain set: Average bypass reconstruction loss: {:.4f}'.format(train_loss_b))
         return train_loss_p, train_loss_c
     
     def test(self):
@@ -446,7 +515,10 @@ class Experiments():
         for batch_idx, (sample, sample0, parameters) in enumerate(self.test_loader):
             sample, sample0, parameters = sample.to(self.device), sample0.to(self.device), parameters.to(self.device)
             output = self.model(sample)
-            loss_p, loss_c = self.loss(output, sample0, parameters)
+            if self.bypass:
+                loss_p, loss_c, _ = self.loss(output, sample0, parameters)
+            else:
+                loss_p, loss_c = self.loss(output, sample0, parameters)
             test_loss_p += loss_p.item()
             test_loss_c += loss_c.item()
         test_loss_p /= len(self.test_loader)

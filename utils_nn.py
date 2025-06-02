@@ -319,7 +319,7 @@ class Encoder_ViT(nn.Module):
                  num_input_channels,
                  output_size: int):
         super().__init__()
-        self.feature_extractor = create_model('vit_base_patch16_224', pretrained=False)
+        self.feature_extractor = create_model('vit_base_patch16_224', pretrained=True)
         self.feature_extractor.reset_classifier(0)  # Removes the final classification head
         # get and modify the existing patch embedding layer
         old_patch_embed = deepcopy(self.feature_extractor.patch_embed)
@@ -350,8 +350,8 @@ class Encoder_ViT(nn.Module):
         tf = default_parameters.t_range[0]*au.Eh
         ls = (default_parameters.l_range[1]-default_parameters.l_range[0])
         lf = default_parameters.l_range[0]
-        self.scale = (torch.tensor([mus,mus,mus,ts,ts,ls,ls])*1.2).to(device)
-        self.offset = torch.tensor([muf,muf,muf,tf,tf,lf,lf]).to(device) - self.scale*0.1/1.2
+        self.scale = (torch.tensor([mus,mus,mus,ts,ts,ls,ls])*1.2).to(torch.float32).to(device)
+        self.offset = torch.tensor([muf,muf,muf,tf,tf,lf,lf]).to(torch.float32).to(device) - self.scale*0.1/1.2
 
     def parameters(self):
         #return self.output_mlp.parameters()
@@ -471,7 +471,7 @@ class Experiments():
         
     def loss(self, output, sample, parameters): 
         if self.bypass:
-            return self.criterion(output[0], parameters), self.criterion(output[1], sample), self.criterion(output[2], sample)
+            return self.criterion(output[0], parameters), self.criterion(output[1], sample), self.criterion(output[2], output[1])
         else:    
             return self.criterion(output[0], parameters), self.criterion(output[1], sample)
         

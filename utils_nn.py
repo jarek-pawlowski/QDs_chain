@@ -377,23 +377,30 @@ class DeconvNet(nn.Module):
         c_hid = num_hidden_channels
         self.linear = nn.Sequential(
             nn.Linear(self.latent_dim, self.latent_dim),
+            act_fn(),
+            nn.Linear(self.latent_dim, self.latent_dim),
+            act_fn(),
+            nn.Linear(self.latent_dim, self.latent_dim),
             act_fn()
         )
         self.net = nn.Sequential(
             nn.ConvTranspose2d(num_input_channels, 2*c_hid, kernel_size=3, stride=2),
             act_fn(),
-            nn.ConvTranspose2d(2*c_hid, c_hid, kernel_size=3, stride=2),
+            nn.ConvTranspose2d(2*c_hid, 4*c_hid, kernel_size=3, stride=2),
             act_fn(),
-            nn.ConvTranspose2d(c_hid, c_hid, kernel_size=3, stride=2),
+            nn.ConvTranspose2d(4*c_hid, 4*c_hid, kernel_size=3, stride=2),
             act_fn(),
-            nn.Conv2d(c_hid, num_output_channels, kernel_size=3),
-            nn.Sigmoid()
+            nn.Conv2d(4*c_hid, 4*c_hid, kernel_size=3),
+            act_fn(),
+            nn.Conv2d(4*c_hid, 2*c_hid, kernel_size=3, padding=1),
+            act_fn(),
+            nn.Conv2d(2*c_hid, num_output_channels, kernel_size=3, padding=1)
         )
 
     def forward(self, x):
         x = x.view(x.shape[0], x.shape[1], self.latent_dim)
         x = self.linear(x).reshape(x.shape[0], x.shape[1], self.input_dim, self.input_dim)
-        x = self.net(x)*2.
+        x = self.net(x)
         return x
 
 
@@ -405,10 +412,18 @@ class Decoder(nn.Module):
         self.transport = Transport(parameters, device)
         self.bypass = bypass
         if self.bypass:
-            self.bypass_network = DeconvNet(12, 2, 16, 32)
-            
+            self.bypass_network = DeconvNet(12, 2, 16, 64)
+    
     def parameters(self):
         return self.bypass_network.parameters()
+    
+    def train(self):
+        if self.bypass:
+            self.bypass_network.train()
+            
+    def eval(self):
+        if self.bypass:
+            self.bypass_network.eval()
     
     def forward(self, x):
         # x should be of shape [batch, no_parmeters]
@@ -448,10 +463,12 @@ class Autoencoder(nn.Module):
         self.encoder.eval()
         self.decoder.eval()
 
-    def forward(self, x):
+    def forward(self, xp):
+        [x,p] = xp
         z = self.encoder(x)
         if self.bypass:
-            x_hat, x_prime = self.decoder(z)
+            #x_hat, x_prime = self.decoder(z)
+            x_hat, x_prime = self.decoder(p)
             return [z, x_hat, x_prime]
         else:
             x_hat = self.decoder(z)
@@ -484,7 +501,8 @@ class Experiments():
         for batch_idx, (sample, sample0, parameters) in enumerate(self.train_loader):
             sample, sample0, parameters = sample.to(self.device), sample0.to(self.device), parameters.to(self.device)
             self.optimizer.zero_grad()
-            output = self.model(sample)
+            #output = self.model(sample)
+            output = self.model([sample, parameters])
             if self.bypass:
                 loss_p, loss_c, loss_b = self.loss(output, sample0, parameters)
             else:
@@ -506,7 +524,7 @@ class Experiments():
         print('\tTrain set: Average C reconstruction loss: {:.4f}'.format(train_loss_c))
         if self.bypass:
             print('\tTrain set: Average bypass reconstruction loss: {:.4f}'.format(train_loss_b))
-        return train_loss_p, train_loss_c
+        return train_loss_p, train_loss_c, train_loss_b
     
     def test(self):
         self.model.eval()
@@ -514,7 +532,8 @@ class Experiments():
         test_loss_c = 0.
         for batch_idx, (sample, sample0, parameters) in enumerate(self.test_loader):
             sample, sample0, parameters = sample.to(self.device), sample0.to(self.device), parameters.to(self.device)
-            output = self.model(sample)
+            #output = self.model(sample)
+            output = self.model([sample, parameters])
             if self.bypass:
                 loss_p, loss_c, _ = self.loss(output, sample0, parameters)
             else:
@@ -533,24 +552,24 @@ class Experiments():
         for epoch_number in range(1, no_epochs+1):
             train_loss.append([*self.train(epoch_number)])
             validation_loss.append([*self.test()])
-        return train_loss, validation_loss
+        return np.array(train_loss), np.array(validation_loss)
     
     def get_prediction(self, i):
         self.model.eval()
         sample, sample0, parameters = next(iter(self.test_loader))
         sample, parameters = sample.to(self.device), parameters.to(self.device)
-        output = self.model(sample)
-        return output[1][i].detach().cpu(), sample0[i]
+        output = self.model([sample, parameters])
+        return output[2][i].detach().cpu(), sample0[i]
     
 
-def plot_loss(train_loss, validation_loss, title):
+def plot_loss(train_loss, validation_loss, title='learning curves'):
     plt.grid(True)
     plt.xlabel("subsequent epochs")
     plt.ylabel('average loss')
-    plt.plot(range(1, len(train_loss)+1), train_loss[:,0], 'o-', label='train p pred. loss')
-    plt.plot(range(1, len(train_loss)+1), train_loss[:,1], 'o-', label='train C rec. loss')
-    plt.plot(range(1, len(validation_loss)+1), validation_loss[:,0], 'o-', label='val p pred. loss')
-    plt.plot(range(1, len(validation_loss)+1), validation_loss[:,1], 'o-', label='val C rec. loss')
+    for i,l in enumerate(train_loss.T):
+        plt.plot(range(1, len(l)+1), l, 'o-', label='train loss '+str(i))
+    for i,l in enumerate(validation_loss.T):
+        plt.plot(range(1, len(l)+1), l, 'o-', label='test loss '+str(i))
     plt.legend()
     plt.title(title)
     plt.savefig(os.path.join('./', 'loss.png'), bbox_inches='tight', dpi=200)

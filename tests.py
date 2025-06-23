@@ -108,9 +108,9 @@ for v in np.linspace(-1./au.Eh, 1./au.Eh, num=101):
         #points.append([v, eig+ie*0.005/au.Eh, (np.abs(eigvs[:,ie])**2).reshape(-1,4).sum(axis=1)[0]*2])
         #points.append([v, eig+ie*0.005/au.Eh, eh[1]*eh[0]*4])
         ms.append(np.abs(ml-mr)*zm)  # mode projection on left - right majoranas
-        ehs.append(np.amax([0., eh[1]*eh[0]*4-0.5])*2.)
+        ehs.append(np.amax([0., eh[0]*eh[1]*4-0.5])*2.)  # smaller than 0.5 are filtered out
     ms = np.array(ms)[np.abs(eigs).argsort()]  # sort MZM_i using |E_i|
-    ehs = np.array(ehs)[np.abs(eigs).argsort()]
+    ehs = np.array(ehs)[np.abs(eigs).argsort()]  # same here
     majoranas.append([v, np.amax([0., ms[0]+ms[1]-ms[2:].sum()])*ehs[0]])  # max(0, MZM_1+MZM_2 - all_others), everything is weighed by exp(-E_i/E_0)
 
 points = np.array(points)

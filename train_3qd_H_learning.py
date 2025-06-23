@@ -12,10 +12,15 @@ train_loader, test_loader = utils_nn.parse_dataset('./3qd_train1/', './3qd_train
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = utils_nn.Autoencoder(parameters, device, bypass=True)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.003)
+#optimizer = torch.optim.Adam(model.parameters(), lr=0.002)  # for deconv teacher
+optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)  # for ViT teacher
+scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[50, 100])
 
-run  = utils_nn.Experiments(device, model, train_loader, test_loader, optimizer, bypass=True)
-train_loss, validation_loss = run.run_training(100)
+print("encoder sise = ", utils_nn.count_parameters(model.encoder))
+print("decoder size = ", utils_nn.count_parameters(model.decoder))
+
+run  = utils_nn.Experiments(device, model, train_loader, test_loader, optimizer, scheduler, bypass=True)
+train_loss, validation_loss = run.run_training(150)
 utils_nn.plot_loss(train_loss, validation_loss)
 
 pr_map, ref_map = run.get_prediction(0)

@@ -12,6 +12,7 @@ from torchvision import transforms
 from timm import create_model
 
 from utils import au
+import dit
 
 import matplotlib.pyplot as plt
 
@@ -42,6 +43,8 @@ def parse_dataset(trainset_directory, testset_directory, batch_size=100):
     test_loader   = DataLoader(CustomDataset(testset_directory), batch_size=batch_size)
     return train_loader, test_loader
 
+def count_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 class Hamiltonian:
     
@@ -412,7 +415,8 @@ class Decoder(nn.Module):
         self.transport = Transport(parameters, device)
         self.bypass = bypass
         if self.bypass:
-            self.bypass_network = DeconvNet(12, 2, 16, 64)
+            #self.bypass_network = DeconvNet(12, 2, 16, 64)
+            self.bypass_network = dit.DiT()
     
     def parameters(self):
         return self.bypass_network.parameters()
@@ -477,18 +481,19 @@ class Autoencoder(nn.Module):
 
 class Experiments():
 
-    def __init__(self, device, model, train_loader, test_loader, optimizer, criterion=nn.MSELoss(), bypass=False):
+    def __init__(self, device, model, train_loader, test_loader, optimizer, scheduler=None, criterion=nn.MSELoss(), bypass=False):
         self.device = device
         self.model = model
         self.train_loader = train_loader
         self.test_loader = test_loader
         self.optimizer = optimizer
+        self.scheduler = scheduler
         self.criterion = criterion
         self.bypass = bypass
         
     def loss(self, output, sample, parameters): 
         if self.bypass:
-            return self.criterion(output[0], parameters), self.criterion(output[1], sample), self.criterion(output[2], output[1])
+            return self.criterion(output[0], parameters), self.criterion(output[1], sample), self.criterion(output[2][:,0,:,:], output[1][:,0,:,:])
         else:    
             return self.criterion(output[0], parameters), self.criterion(output[1], sample)
         
@@ -552,6 +557,8 @@ class Experiments():
         for epoch_number in range(1, no_epochs+1):
             train_loss.append([*self.train(epoch_number)])
             validation_loss.append([*self.test()])
+            if self.scheduler is not None:
+                self.scheduler.step()
         return np.array(train_loss), np.array(validation_loss)
     
     def get_prediction(self, i):
@@ -567,9 +574,9 @@ def plot_loss(train_loss, validation_loss, title='learning curves'):
     plt.xlabel("subsequent epochs")
     plt.ylabel('average loss')
     for i,l in enumerate(train_loss.T):
-        plt.plot(range(1, len(l)+1), l, 'o-', label='train loss '+str(i))
+        plt.plot(range(1, len(l)+1), l, '-', label='train loss '+str(i))
     for i,l in enumerate(validation_loss.T):
-        plt.plot(range(1, len(l)+1), l, 'o-', label='test loss '+str(i))
+        plt.plot(range(1, len(l)+1), l, '-', label='test loss '+str(i))
     plt.legend()
     plt.title(title)
     plt.savefig(os.path.join('./', 'loss.png'), bbox_inches='tight', dpi=200)

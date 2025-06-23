@@ -234,6 +234,12 @@ class System:
     def update_mu(self, new_mu):
         self.parameters.mu = new_mu
         
+    def update_t(self, new_t):
+        self.parameters.t = new_t
+        
+    def update_l(self, new_l):
+        self.parameters.l = new_l
+        
     def update_b(self, new_b):
         self.parameters.b = new_b
 

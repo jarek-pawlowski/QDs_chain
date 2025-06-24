@@ -493,7 +493,7 @@ class Experiments():
         
     def loss(self, output, sample, parameters): 
         if self.bypass:
-            return self.criterion(output[0], parameters), self.criterion(output[1], sample), self.criterion(output[2][:,0,:,:], output[1][:,0,:,:])
+            return self.criterion(output[0], parameters), self.criterion(output[1], sample), self.criterion(output[2], output[1][:,(0,12),:,:])
         else:    
             return self.criterion(output[0], parameters), self.criterion(output[1], sample)
         
@@ -569,16 +569,17 @@ class Experiments():
         return output[2][i].detach().cpu(), sample0[i]
     
 
-def plot_loss(train_loss, validation_loss, title='learning curves'):
+def plot_loss(train_loss, validation_loss, title='learning curves', path='./'):
     plt.grid(True)
     plt.xlabel("subsequent epochs")
     plt.ylabel('average loss')
+    plt.yscale('log')
     for i,l in enumerate(train_loss.T):
         plt.plot(range(1, len(l)+1), l, '-', label='train loss '+str(i))
     for i,l in enumerate(validation_loss.T):
         plt.plot(range(1, len(l)+1), l, '-', label='test loss '+str(i))
     plt.legend()
     plt.title(title)
-    plt.savefig(os.path.join('./', 'loss.png'), bbox_inches='tight', dpi=200)
+    plt.savefig(os.path.join(path, 'loss.png'), bbox_inches='tight', dpi=200)
     plt.close()
 

@@ -147,7 +147,7 @@ class DiT(nn.Module):
         input_size=12,
         input_channels=2,
         output_size=101,
-        output_channels=16,
+        output_channels=2,
         patch_size=1,
         hidden_size=512,  # was 256
         depth=24,  # was 12

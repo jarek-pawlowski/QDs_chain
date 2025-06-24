@@ -4,5 +4,6 @@ olds/
 3qd_train0/
 3qd_train1/
 3qd_test/
+tests/
 *.png
 *.zip

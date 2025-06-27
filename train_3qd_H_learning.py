@@ -12,8 +12,13 @@ train_loader, test_loader = utils_nn.parse_dataset('./3qd_train1/', './3qd_train
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = utils_nn.Autoencoder(parameters, device, bypass=True)
-#optimizer = torch.optim.Adam(model.parameters(), lr=0.002)  # for deconv teacher
-optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)  # for ViT teacher
+
+# for deconv teacher
+#optimizer = torch.optim.Adam(model.parameters(), lr=0.001)  
+#scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[200])
+
+# for ViT teacher
+optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)  
 scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[100, 200])
 
 print("encoder sise = ", utils_nn.count_parameters(model.encoder))
@@ -34,5 +39,6 @@ plot.plot_conductance_map_(ref_map[12], suffix='gt_1')
 # plot.plot_conductance_map_(pr_map[-1], suffix='prediction_15')
 # plot.plot_conductance_map_(ref_map[-1], suffix='gt_15')
 
-utils_nn.plot_loss(train_loss[:,(0,2)], validation_loss[:,0], path='./tests/')
+#utils_nn.plot_loss(train_loss[:,(0,2)], validation_loss, path='./tests/')
+utils_nn.plot_loss(train_loss[:,(0,2)], path='./tests/')
 torch.save(model.decoder.state_dict(), "./tests/teacher.pth")

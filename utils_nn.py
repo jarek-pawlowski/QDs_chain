@@ -384,14 +384,22 @@ class DeconvNet(nn.Module):
             nn.Linear(self.latent_dim, self.latent_dim),
             act_fn(),
             nn.Linear(self.latent_dim, self.latent_dim),
-            act_fn()
+            act_fn(),
+            nn.Linear(self.latent_dim, self.latent_dim*4),
+            act_fn(),
+            nn.Linear(self.latent_dim*4, self.latent_dim*4),
+            act_fn(),
         )
         self.net = nn.Sequential(
-            nn.ConvTranspose2d(num_input_channels, 2*c_hid, kernel_size=3, stride=2),
+            nn.ConvTranspose2d(num_input_channels, 2*c_hid, kernel_size=3),
             act_fn(),
             nn.ConvTranspose2d(2*c_hid, 4*c_hid, kernel_size=3, stride=2),
             act_fn(),
             nn.ConvTranspose2d(4*c_hid, 4*c_hid, kernel_size=3, stride=2),
+            act_fn(),
+            nn.Conv2d(4*c_hid, 4*c_hid, kernel_size=3),
+            act_fn(),
+            nn.Conv2d(4*c_hid, 4*c_hid, kernel_size=3),
             act_fn(),
             nn.Conv2d(4*c_hid, 4*c_hid, kernel_size=3),
             act_fn(),
@@ -402,7 +410,7 @@ class DeconvNet(nn.Module):
 
     def forward(self, x):
         x = x.view(x.shape[0], x.shape[1], self.latent_dim)
-        x = self.linear(x).reshape(x.shape[0], x.shape[1], self.input_dim, self.input_dim)
+        x = self.linear(x).reshape(x.shape[0], x.shape[1], self.input_dim*2, self.input_dim*2)
         x = self.net(x)
         return x
 
@@ -415,7 +423,7 @@ class Decoder(nn.Module):
         self.transport = Transport(parameters, device)
         self.bypass = bypass
         if self.bypass:
-            #self.bypass_network = DeconvNet(12, 2, 16, 64)
+            #self.bypass_network = DeconvNet(12, 2, 2, 128)  # (12, 2, 16, 64)
             self.bypass_network = dit.DiT()
     
     def parameters(self):
@@ -569,15 +577,16 @@ class Experiments():
         return output[2][i].detach().cpu(), sample0[i]
     
 
-def plot_loss(train_loss, validation_loss, title='learning curves', path='./'):
+def plot_loss(train_loss, validation_loss=None, title='learning curves', path='./'):
     plt.grid(True)
     plt.xlabel("subsequent epochs")
     plt.ylabel('average loss')
     plt.yscale('log')
     for i,l in enumerate(train_loss.T):
         plt.plot(range(1, len(l)+1), l, '-', label='train loss '+str(i))
-    for i,l in enumerate(validation_loss.T):
-        plt.plot(range(1, len(l)+1), l, '-', label='test loss '+str(i))
+    if validation_loss is not None:
+        for i,l in enumerate(validation_loss.T):
+            plt.plot(range(1, len(l)+1), l, '-', label='test loss '+str(i))
     plt.legend()
     plt.title(title)
     plt.savefig(os.path.join(path, 'loss.png'), bbox_inches='tight', dpi=200)

@@ -19,6 +19,9 @@ hamiltonian = system.full_hamiltonian()
 m1 = np.concatenate([np.array([1,1,-1,-1]), np.array([0,0,0,0]*(no_dots-2)), np.array([1,1,1,1])]).T/2.
 m2 = np.concatenate([np.array([1,1,-1,-1])*-1., np.array([0,0,0,0]*(no_dots-2)), np.array([1,1,1,1])]).T/2.
 
+m11 = np.concatenate([np.array([1,1,-1,-1]), np.array([0,0,0,0]*(no_dots-1))]).T/2.
+m22 = np.concatenate([np.array([0,0,0,0]*(no_dots-1)), np.array([1,1,-1,-1])]).T/2.
+
 points = []
 majoranas = []
 vs = np.linspace(0./au.Eh, 1.5/au.Eh, num=101)
@@ -31,16 +34,16 @@ for u in np.linspace(0./au.Eh, 1.5/au.Eh, num=101):
         ms = []
         ehs = []
         for ie, eig in enumerate(eigs):
-            ml = np.conj(eigvs[:,ie])@m1
-            mr = np.conj(eigvs[:,ie])@m2
+            ml = np.conj(eigvs[:,ie])@m11
+            mr = np.conj(eigvs[:,ie])@m22
             zm = np.exp(-np.abs(eig)/(0.05/au.Eh))  # 0.1
             eh = (np.abs(eigvs[:,ie])**2).reshape(-1,2,2).sum(axis=(0,2))
             points.append([v, eig+ie*0.005/au.Eh, (np.abs(eigvs[:,ie])**2).reshape(-1,4).sum(axis=0).reshape(2,2).sum(axis=1)[0]])
-            ms.append(np.abs(ml-mr)*zm)  # mode projection on left - right majoranas
+            ms.append(np.abs(ml+mr)*zm)  # mode projection on left - right majoranas
             ehs.append(np.amax([0., eh[0]*eh[1]*4-0.5])*2.)  # smaller than 0.5 are filtered out
         ms = np.array(ms)[np.abs(eigs).argsort()]  # sort MZM_i using |E_i|
         ehs = np.array(ehs)[np.abs(eigs).argsort()]  # same here
-        majoranas.append([u, v, np.amax([0., ms[0]+ms[1]-ms[2:].sum()])*ehs[0]])  # max(0, MZM_1+MZM_2 - all_others), everything is weighed by exp(-E_i/E_0)
+        majoranas.append([u, v, np.amax([0., ms[0]+ms[1]-ms[2:].sum()])*ehs[0]/2.])  # max(0, MZM_1+MZM_2 - all_others), everything is weighed by exp(-E_i/E_0)
 
 points = np.array(points)
 majoranas = np.array(majoranas)
@@ -76,16 +79,16 @@ for u in np.linspace(0./au.Eh, 1.5/au.Eh, num=101):
         ms = []
         ehs = []
         for ie, eig in enumerate(eigs):
-            ml = np.conj(eigvs[:,ie])@m1
-            mr = np.conj(eigvs[:,ie])@m2
+            ml = np.conj(eigvs[:,ie])@m11
+            mr = np.conj(eigvs[:,ie])@m22
             zm = np.exp(-np.abs(eig)/(0.05/au.Eh))  # 0.1
             eh = (np.abs(eigvs[:,ie])**2).reshape(-1,2,2).sum(axis=(0,2))
             points.append([v, eig+ie*0.005/au.Eh, (np.abs(eigvs[:,ie])**2).reshape(-1,4).sum(axis=0).reshape(2,2).sum(axis=1)[0]])
-            ms.append(np.abs(ml-mr)*zm)  # mode projection on left - right majoranas
+            ms.append(np.abs(ml+mr)*zm)  # mode projection on left - right majoranas
             ehs.append(np.amax([0., eh[0]*eh[1]*4-0.5])*2.)  # smaller than 0.5 are filtered out
         ms = np.array(ms)[np.abs(eigs).argsort()]  # sort MZM_i using |E_i|
         ehs = np.array(ehs)[np.abs(eigs).argsort()]  # same here
-        majoranas.append([u, v, np.amax([0., ms[0]+ms[1]-ms[2:].sum()])*ehs[0]])  # max(0, MZM_1+MZM_2 - all_others), everything is weighed by exp(-E_i/E_0)
+        majoranas.append([u, v, np.amax([0., ms[0]+ms[1]-ms[2:].sum()])*ehs[0]/2.])  # max(0, MZM_1+MZM_2 - all_others), everything is weighed by exp(-E_i/E_0)
 
 points = np.array(points)
 majoranas = np.array(majoranas)
@@ -122,16 +125,16 @@ for u in np.linspace(0./au.Eh, 1.5/au.Eh, num=101):
         ms = []
         ehs = []
         for ie, eig in enumerate(eigs):
-            ml = np.conj(eigvs[:,ie])@m1
-            mr = np.conj(eigvs[:,ie])@m2
+            ml = np.conj(eigvs[:,ie])@m11
+            mr = np.conj(eigvs[:,ie])@m22
             zm = np.exp(-np.abs(eig)/(0.05/au.Eh))  # 0.1
             eh = (np.abs(eigvs[:,ie])**2).reshape(-1,2,2).sum(axis=(0,2))
             points.append([v, eig+ie*0.005/au.Eh, (np.abs(eigvs[:,ie])**2).reshape(-1,4).sum(axis=0).reshape(2,2).sum(axis=1)[0]])
-            ms.append(np.abs(ml-mr)*zm)  # mode projection on left - right majoranas
+            ms.append(np.abs(ml+mr)*zm)  # mode projection on left - right majoranas
             ehs.append(np.amax([0., eh[0]*eh[1]*4-0.5])*2.)  # smaller than 0.5 are filtered out
         ms = np.array(ms)[np.abs(eigs).argsort()]  # sort MZM_i using |E_i|
         ehs = np.array(ehs)[np.abs(eigs).argsort()]  # same here
-        majoranas.append([u, v, np.amax([0., ms[0]+ms[1]-ms[2:].sum()])*ehs[0]])  # max(0, MZM_1+MZM_2 - all_others), everything is weighed by exp(-E_i/E_0)
+        majoranas.append([u, v, np.amax([0., ms[0]+ms[1]-ms[2:].sum()])*ehs[0]/2.])  # max(0, MZM_1+MZM_2 - all_others), everything is weighed by exp(-E_i/E_0)
 
 points = np.array(points)
 majoranas = np.array(majoranas)
@@ -179,7 +182,7 @@ for u in np.linspace(0., 1.0, num=101):
             ehs.append(np.amax([0., eh[0]*eh[1]*4-0.5])*2.)  # smaller than 0.5 are filtered out
         ms = np.array(ms)[np.abs(eigs).argsort()]  # sort MZM_i using |E_i|
         ehs = np.array(ehs)[np.abs(eigs).argsort()]  # same here
-        majoranas.append([u, v, np.amax([0., ms[0]+ms[1]-ms[2:].sum()])*ehs[0]])  # max(0, MZM_1+MZM_2 - all_others), everything is weighed by exp(-E_i/E_0)
+        majoranas.append([u, v, np.amax([0., ms[0]+ms[1]-ms[2:].sum()])*ehs[0]/2.])  # max(0, MZM_1+MZM_2 - all_others), everything is weighed by exp(-E_i/E_0)
 
 points = np.array(points)
 majoranas = np.array(majoranas)
@@ -190,9 +193,9 @@ ax.set_xlabel("$\mu$ (mV)", labelpad=-1.)
 ax.set_ylabel("$\lambda$ (meV)")
 ax.set_ylim([0.,1.])
 ax.set_aspect('equal')
-ax.set_yticks([0.,.25,.5])
-cc = ax.scatter(x=majoranas[:,1]*au.Eh, y=majoranas[:,0], c=majoranas[:,2], s=.5)
-ax.plot(vs*au.Eh, np.arccos(vs*au.Eh/.5), '-', c='orange')
+ax.set_yticks([0.,.5,1.])
+cc = ax.scatter(x=majoranas[:,1]*au.Eh, y=majoranas[:,0]*2, c=majoranas[:,2], s=1.5)
+ax.plot(vs*au.Eh, np.arctan(vs*au.Eh/.25)/np.pi, '-', c='orange')
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 divider = make_axes_locatable(ax)
 cax = divider.append_axes("bottom", size="5%", pad=0.45)

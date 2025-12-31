@@ -196,6 +196,7 @@ ax.set_aspect('equal')
 ax.set_yticks([0.,.5,1.])
 cc = ax.scatter(x=majoranas[:,1]*au.Eh, y=majoranas[:,0]*2, c=majoranas[:,2], s=1.5)
 ax.plot(vs*au.Eh, np.arctan(vs*au.Eh/.25)/np.pi, '-', c='orange')
+ax.vlines(np.sqrt(0.5**2-0.25**2), -10., 10., colors='orange', linestyles='-')
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 divider = make_axes_locatable(ax)
 cax = divider.append_axes("bottom", size="5%", pad=0.45)
